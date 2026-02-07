@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Drive Test Viewer PRO</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+<style>
+body { margin:0; font-family: Arial; }
+#map { height: 85vh; }
+.controls { padding:10px; background:#f4f4f4; }
+select { margin-right:10px; padding:5px; }
+</style>
+</head>
+
+<body>
+
+<div class="controls">
+  <input type="file" id="fileInput">
+
+  <select id="cellFilter">
+    <option value="all">Todos los CellID</option>
+  </select>
+
+  <select id="pscFilter">
+    <option value="all">Todos los PSC</option>
+  </select>
+</div>
+
+<div id="map"></div>
+
+<script>
+
+var map = L.map('map').setView([4.6, -74.1], 12);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+}).addTo(map);
+
+const colors = [
+    "#ff0000","#0000ff","#00ff00","#ff9900",
+    "#9900ff","#00ffff","#ff00ff","#ffff00"
+];
+
+let markers = [];
+let rawData = [];
+let cellColors = {};
+
+document.getElementById('fileInput').addEventListener('change', function(e) {
+
+    Papa.parse(e.target.files[0], {
+        header: true,
+        delimiter: "\t",
+        skipEmptyLines: true,
+        complete: function(results) {
+
+            rawData = results.data;
+            clearMap();
+            cellColors = {};
+
+            let cellSet = new Set();
+            let pscSet = new Set();
+            let colorIndex = 0;
+
+            rawData.forEach(row => {
+
+                if (!row.CellID || !row.Latitude || !row.Longitude) return;
+
+                cellSet.add(row.CellID);
+                if (row.PSC) pscSet.add(row.PSC);
+
+                if (!cellColors[row.CellID]) {
+                    cellColors[row.CellID] = colors[colorIndex % colors.length];
+                    colorIndex++;
+                }
+            });
+
+            updateDropdown("cellFilter", cellSet, "Todos los CellID");
+            updateDropdown("pscFilter", pscSet, "Todos los PSC");
+
+            drawMarkers();
+        }
+    });
+});
+
+function updateDropdown(id, values, defaultText) {
+    let select = document.getElementById(id);
+    select.innerHTML = `<option value="all">${defaultText}</option>`;
+    values.forEach(v => {
+        select.innerHTML += `<option value="${v}">${v}</option>`;
+    });
+}
+
+function clearMap() {
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+}
+
+function drawMarkers() {
+
+    clearMap();
+
+    let cellSelected = document.getElementById("cellFilter").value;
+    let pscSelected = document.getElementById("pscFilter").value;
+
+    rawData.forEach(row => {
+
+        if (!row.CellID || !row.Latitude || !row.Longitude) return;
+
+        if (cellSelected !== "all" && row.CellID !== cellSelected) return;
+        if (pscSelected !== "all" && row.PSC !== pscSelected) return;
+
+        let lat = parseFloat(row.Latitude);
+        let lon = parseFloat(row.Longitude);
+        if (isNaN(lat) || isNaN(lon)) return;
+
+        let color = cellColors[row.CellID];
+
+        let marker = L.circleMarker(
+            [lat, lon],
+            {
+                radius: 4,
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.9
+            }
+        ).addTo(map);
+
+        marker.bindTooltip(
+            "CellID: " + row.CellID + " | PSC: " + row.PSC,
+            { permanent: false }
+        );
+
+        markers.push(marker);
+    });
+}
+
+document.getElementById("cellFilter").addEventListener("change", drawMarkers);
+document.getElementById("pscFilter").addEventListener("change", drawMarkers);
+
+</script>
+
+</body>
+</html>
